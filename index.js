@@ -11,6 +11,7 @@ import { taskValidation } from './validations/task.js';
 import * as UserController from './controllers/UserController/UserController.js';
 import * as GroupController from './controllers/GroupController/GroupController.js';
 import * as TaskController from './controllers/TaskController/TaskController.js';
+import * as AiController from './controllers/AiController/AiController.js';
 
 dotenv.config();
 const app = express();
@@ -67,6 +68,7 @@ app.get('/tasks/:groupId', checkAuth, TaskController.getAll);
 app.post('/tasks/:groupId', checkAuth, taskValidation, handleValidationErrors, TaskController.create);
 app.delete('/tasks/:groupId/:taskId', checkAuth, TaskController.remove);
 app.patch('/tasks/:groupId/:taskId', checkAuth, taskValidation, handleValidationErrors, TaskController.update);
+app.post('/ai/groups/:groupId/tasks', checkAuth, AiController.generateGroupTasks);
 
 app.listen(port, (err) => {
     if (err) {

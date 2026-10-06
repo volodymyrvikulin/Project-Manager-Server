@@ -27,6 +27,14 @@ const GroupSchema = new mongoose.Schema({
             required: true,
             default: 1,
         },
+        pert: {
+            optimistic: { type: Number, default: 1 },
+            mostLikely: { type: Number, default: 1 },
+            pessimistic: { type: Number, default: 1 },
+            expected: { type: Number, default: 1 },
+            standardDeviation: { type: Number, default: 0 },
+            variance: { type: Number, default: 0 },
+        },
         deadline: {
             type: Date,
             required: false,

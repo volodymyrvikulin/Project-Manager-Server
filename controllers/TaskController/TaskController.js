@@ -26,7 +26,7 @@ export const getAll = async (req, res) => {
 export const create = async (req, res) => {
     try {
         const groupId = req.params.groupId;
-        const { title, status, priority, dependencies, duration, deadline, assignedTo } = req.body;
+        const { title, status, priority, dependencies, duration, pert, deadline, assignedTo } = req.body;
 
         const group = await GroupModel.findOne({
             _id: groupId,
@@ -67,6 +67,14 @@ export const create = async (req, res) => {
                         priority: priority !== undefined ? priority : false,
                         dependencies: dependencies || [],
                         duration: duration || 1,
+                        pert: pert || {
+                            optimistic: duration || 1,
+                            mostLikely: duration || 1,
+                            pessimistic: duration || 1,
+                            expected: duration || 1,
+                            standardDeviation: 0,
+                            variance: 0,
+                        },
                         deadline: deadline || undefined,
                         createdAt: new Date(),
                         assignedTo: assignedTo || null,
@@ -149,7 +157,7 @@ export const update = async (req, res) => {
     try {
         const groupId = req.params.groupId;
         const taskId = req.params.taskId;
-        const { title, status, priority, dependencies, duration, deadline, assignedTo } = req.body;
+        const { title, status, priority, dependencies, duration, pert, deadline, assignedTo } = req.body;
 
         const group = await GroupModel.findOne({
             _id: groupId,
@@ -198,6 +206,14 @@ export const update = async (req, res) => {
                         priority,
                         dependencies: dependencies || [],
                         duration: duration || 1,
+                        pert: pert || taskToUpdate.pert || {
+                            optimistic: duration || 1,
+                            mostLikely: duration || 1,
+                            pessimistic: duration || 1,
+                            expected: duration || 1,
+                            standardDeviation: 0,
+                            variance: 0,
+                        },
                         deadline: deadline || undefined,
                         createdAt: taskToUpdate.createdAt,
                         assignedTo: assignedTo || null,
