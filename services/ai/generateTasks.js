@@ -6,28 +6,46 @@ const responseSchema = {
         type: 'OBJECT',
         properties: {
             title: { type: 'STRING' },
+            description: { type: 'STRING', description: 'Короткий опис або деталі задачі (1-2 речення)' },
             optimisticDuration: { type: 'NUMBER' },
             mostLikelyDuration: { type: 'NUMBER' },
             pessimisticDuration: { type: 'NUMBER' },
+            dependencyIndices: {
+                type: 'ARRAY',
+                items: { type: 'INTEGER' },
+                description: '0-based indices of prerequisite tasks from this list that must be completed before this task can start',
+            },
         },
-        required: ['title', 'optimisticDuration', 'mostLikelyDuration', 'pessimisticDuration'],
+        required: ['title', 'optimisticDuration', 'mostLikelyDuration', 'pessimisticDuration', 'dependencyIndices'],
     },
 };
 
 const normalizeTasks = (tasks) => tasks
     .filter((task) => task && typeof task.title === 'string' && task.title.trim())
-    .map((task) => {
+    .map((task, index) => {
         const optimistic = Math.max(1, Number(task.optimisticDuration) || Number(task.duration) || 1);
         const mostLikely = Math.max(optimistic, Number(task.mostLikelyDuration) || optimistic);
         const pessimistic = Math.max(mostLikely, Number(task.pessimisticDuration) || mostLikely);
         const expected = (optimistic + (4 * mostLikely) + pessimistic) / 6;
         const standardDeviation = (pessimistic - optimistic) / 6;
 
+        const rawDeps = Array.isArray(task.dependencyIndices)
+            ? task.dependencyIndices
+            : (Array.isArray(task.dependencies) ? task.dependencies : []);
+
+        const dependencyIndices = Array.from(new Set(
+            rawDeps
+                .map((d) => Number(d))
+                .filter((d) => Number.isInteger(d) && d >= 0 && d < index)
+        ));
+
         return {
             title: task.title.trim(),
+            description: typeof task.description === 'string' ? task.description.trim() : '',
             status: true,
             priority: false,
             dependencies: [],
+            dependencyIndices,
             duration: Math.max(1, Math.ceil(expected)),
             pert: {
                 optimistic,
@@ -60,13 +78,16 @@ export const generateTasks = async (description) => {
                 contents: [{
                     parts: [{
                         text: [
-                            'Turn the user request into a short, concrete checklist of actionable tasks.',
+                            'Turn the user request into a short, concrete checklist of actionable tasks forming a logical workflow (directed acyclic graph).',
                             'Preserve the user\'s domain and intent. Do not assume that the request is about software, business, databases, suppliers, or market analysis unless the user explicitly says so.',
                             'For a short shopping or household request, create only the directly relevant shopping or household actions.',
                             'Do not invent unrelated context, stakeholders, systems, suppliers, research, or implementation steps.',
                             'Use the same language as the user request.',
-                            'Return only a JSON array with 1 to 10 items. Each item must contain a concise title and three duration estimates in whole days: optimisticDuration, mostLikelyDuration, and pessimisticDuration.',
-                            'The three estimates must satisfy optimisticDuration <= mostLikelyDuration <= pessimisticDuration.',
+                            'Return only a JSON array with 1 to 10 items. Order tasks in chronological / logical execution sequence.',
+                            'Each item must contain:',
+                            '  - title: concise action title.',
+                            '  - optimisticDuration, mostLikelyDuration, pessimisticDuration: whole days estimates satisfying optimisticDuration <= mostLikelyDuration <= pessimisticDuration.',
+                            '  - dependencyIndices: an array of 0-based indices of prerequisite tasks that must be finished before this task can begin (e.g. [] for initial tasks, [0] for a task depending on task 0). A task can only depend on earlier tasks in the list (index < current_task_index) to prevent circular dependencies.',
                             `User request: ${description}`,
                         ].join('\n'),
                     }],

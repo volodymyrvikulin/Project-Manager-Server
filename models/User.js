@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { UserInvitationSchema } from "./Invitation.js";
 
 const UserSchema = new mongoose.Schema({
     fullName: {
@@ -31,27 +32,7 @@ const UserSchema = new mongoose.Schema({
         default: '',
         maxlength: 500,
     },
-    pendingInvitations: [{
-        groupId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Group',
-            required: true,
-        },
-        status: {
-            type: String,
-            enum: ['pending', 'accepted', 'declined'],
-            default: 'pending',
-        },
-        invitedBy: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-            required: true,
-        },
-        invitedAt: {
-            type: Date,
-            default: Date.now,
-        },
-    }],
+    pendingInvitations: [UserInvitationSchema],
 }, {
     timestamps: true,
 });

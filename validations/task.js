@@ -2,6 +2,7 @@ import { body } from 'express-validator';
 
 export const taskValidation = [
     body('title', 'Enter the task title').isLength({ min: 2 }).isString(),
+    body('description', 'Description must be a string').optional().isString(),
     body('status', 'Invalid status format').isBoolean(),
     body('priority', 'Invalid priority format').isBoolean(),
     body('dependencies', 'Dependencies must be an array of IDs').optional().isArray(),

@@ -1,4 +1,5 @@
 import GroupModel from '../../models/Group.js';
+import { getMemberRoleAndPermissions } from '../../models/Permission.js';
 import handleError from '../../utils/handleError.js';
 
 export const getAll = async (req, res) => {
@@ -26,7 +27,7 @@ export const getAll = async (req, res) => {
 export const create = async (req, res) => {
     try {
         const groupId = req.params.groupId;
-        const { title, status, priority, dependencies, duration, pert, deadline, assignedTo } = req.body;
+        const { title, description, status, priority, dependencies, duration, pert, deadline, assignedTo } = req.body;
 
         const group = await GroupModel.findOne({
             _id: groupId,
@@ -39,16 +40,11 @@ export const create = async (req, res) => {
             });
         }
 
-        const isOwner = group.user.toString() === req.userId.toString();
-        if (!isOwner) {
-            const userPermissions = group.permissions.find(
-                (perm) => perm.userId.toString() === req.userId.toString()
-            );
-            if (!userPermissions || !userPermissions.canAddTasks) {
-                return res.status(403).json({
-                    message: "You do not have permission to add tasks",
-                });
-            }
+        const { permissions } = getMemberRoleAndPermissions(group, req.userId);
+        if (!permissions.canAddTasks) {
+            return res.status(403).json({
+                message: "You do not have permission to add tasks",
+            });
         }
 
         if (assignedTo && !group.members.some(member => member.toString() === assignedTo)) {
@@ -63,6 +59,7 @@ export const create = async (req, res) => {
                 $push: {
                     tasks: {
                         title,
+                        description: description || '',
                         status: status !== undefined ? status : true,
                         priority: priority !== undefined ? priority : false,
                         dependencies: dependencies || [],
@@ -114,16 +111,11 @@ export const remove = async (req, res) => {
             });
         }
 
-        const isOwner = group.user.toString() === req.userId.toString();
-        if (!isOwner) {
-            const userPermissions = group.permissions.find(
-                (perm) => perm.userId.toString() === req.userId.toString()
-            );
-            if (!userPermissions || !userPermissions.canDeleteTasks) {
-                return res.status(403).json({
-                    message: "You do not have permission to delete tasks",
-                });
-            }
+        const { permissions } = getMemberRoleAndPermissions(group, req.userId);
+        if (!permissions.canDeleteTasks) {
+            return res.status(403).json({
+                message: "You do not have permission to delete tasks",
+            });
         }
 
         const groupUpdate = await GroupModel.findOneAndUpdate(
@@ -157,7 +149,7 @@ export const update = async (req, res) => {
     try {
         const groupId = req.params.groupId;
         const taskId = req.params.taskId;
-        const { title, status, priority, dependencies, duration, pert, deadline, assignedTo } = req.body;
+        const { title, description, status, priority, dependencies, duration, pert, deadline, assignedTo } = req.body;
 
         const group = await GroupModel.findOne({
             _id: groupId,
@@ -170,29 +162,35 @@ export const update = async (req, res) => {
             });
         }
 
-        const isOwner = group.user.toString() === req.userId.toString();
-        if (!isOwner) {
-            const userPermissions = group.permissions.find(
-                (perm) => perm.userId.toString() === req.userId.toString()
-            );
-            if (!userPermissions || !userPermissions.canEditTasks) {
-                return res.status(403).json({
-                    message: "You do not have permission to edit tasks",
-                });
-            }
-        }
-
-        if (assignedTo && !group.members.some(member => member.toString() === assignedTo)) {
-            return res.status(400).json({
-                message: "The assigned user is not a member of the group",
-            });
-        }
-
         const taskToUpdate = group.tasks.find(task => task._id.toString() === taskId);
         if (!taskToUpdate) {
             return res.status(404).json({
                 message: "Task not found",
             });
+        }
+
+        const { role, permissions } = getMemberRoleAndPermissions(group, req.userId);
+
+        const isStatusChangeOnly = status !== undefined &&
+            status !== taskToUpdate.status &&
+            (title === undefined || title === taskToUpdate.title) &&
+            (duration === undefined || duration === taskToUpdate.duration) &&
+            (priority === undefined || priority === taskToUpdate.priority);
+
+        if (isStatusChangeOnly) {
+            if (!permissions.canChangeStatus) {
+                return res.status(403).json({
+                    message: "You do not have permission to change task status",
+                });
+            }
+        } else {
+            const isAssignedToUser = taskToUpdate.assignedTo && taskToUpdate.assignedTo.toString() === req.userId.toString();
+            const canEdit = permissions.canEditTasks || (role === 'member' && isAssignedToUser);
+            if (!canEdit) {
+                return res.status(403).json({
+                    message: "You do not have permission to edit this task",
+                });
+            }
         }
 
         const groupUpdate = await GroupModel.findOneAndUpdate(
@@ -202,18 +200,23 @@ export const update = async (req, res) => {
                     "tasks.$[elem]": {
                         _id: taskId,
                         title,
+                        description: description !== undefined ? description : (taskToUpdate.description || ''),
                         status,
                         priority,
                         dependencies: dependencies || [],
                         duration: duration || 1,
-                        pert: pert || taskToUpdate.pert || {
-                            optimistic: duration || 1,
-                            mostLikely: duration || 1,
-                            pessimistic: duration || 1,
-                            expected: duration || 1,
-                            standardDeviation: 0,
-                            variance: 0,
-                        },
+                        pert: pert
+                            ? pert
+                            : (taskToUpdate.pert && Number(taskToUpdate.pert.standardDeviation) > 0
+                                ? taskToUpdate.pert
+                                : {
+                                    optimistic: duration || 1,
+                                    mostLikely: duration || 1,
+                                    pessimistic: duration || 1,
+                                    expected: duration || 1,
+                                    standardDeviation: 0,
+                                    variance: 0,
+                                }),
                         deadline: deadline || undefined,
                         createdAt: taskToUpdate.createdAt,
                         assignedTo: assignedTo || null,

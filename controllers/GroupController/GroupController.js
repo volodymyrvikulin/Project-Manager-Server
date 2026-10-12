@@ -1,6 +1,8 @@
 import GroupModel from '../../models/Group.js';
 import UserModel from '../../models/User.js';
+import { getMemberRoleAndPermissions, ROLE_PERMISSIONS } from '../../models/Permission.js';
 import handleError from '../../utils/handleError.js';
+import { emitToUser } from '../../socket.js';
 
 export const getAll = async (req, res) => {
     try {
@@ -130,12 +132,19 @@ export const inviteUser = async (req, res) => {
 
         const group = await GroupModel.findOne({
             _id: groupId,
-            user: req.userId,
+            $or: [{ user: req.userId }, { members: req.userId }],
         });
 
         if (!group) {
             return res.status(404).json({
-                message: "Group not found or you are not the owner",
+                message: "Group not found or you do not have access",
+            });
+        }
+
+        const { permissions } = getMemberRoleAndPermissions(group, req.userId);
+        if (!permissions.canInviteUsers) {
+            return res.status(403).json({
+                message: "You do not have permission to invite users to this group",
             });
         }
 
@@ -200,6 +209,26 @@ export const inviteUser = async (req, res) => {
         const updatedGroup = await GroupModel.findById(groupId)
             .populate('members', 'fullName email')
             .populate('user', 'fullName email');
+
+        try {
+            const sender = await UserModel.findById(req.userId).select('fullName email');
+            emitToUser(user._id.toString(), 'invitation_received', {
+                groupId: {
+                    _id: group._id,
+                    title: group.title,
+                },
+                invitedBy: {
+                    _id: req.userId,
+                    fullName: sender?.fullName || 'Користувач',
+                    email: sender?.email || '',
+                },
+                invitedAt: new Date(),
+                status: 'pending',
+                message: `Вас запрошено до проєкту "${group.title}"`,
+            });
+        } catch (socketErr) {
+            console.error('Socket notification error:', socketErr);
+        }
 
         res.json({
             message: `Invitation sent to user ${user.fullName}`,
@@ -291,7 +320,7 @@ export const removeUser = async (req, res) => {
 export const updatePermissions = async (req, res) => {
     try {
         const groupId = req.params.id;
-        const { userId, canAddTasks = false, canEditTasks = false, canDeleteTasks = false } = req.body;
+        const { userId, role = 'member' } = req.body;
 
         const group = await GroupModel.findOne({
             _id: groupId,
@@ -304,7 +333,7 @@ export const updatePermissions = async (req, res) => {
             });
         }
 
-        if (!group.members.includes(userId)) {
+        if (!group.members.some(m => m.toString() === userId.toString())) {
             return res.status(400).json({
                 message: "This user is not a member of the group",
             });
@@ -316,23 +345,19 @@ export const updatePermissions = async (req, res) => {
             });
         }
 
+        const validRoles = ['admin', 'member', 'viewer'];
+        const targetRole = validRoles.includes(role) ? role : 'member';
+
         const permissionIndex = group.permissions.findIndex(
             (perm) => perm.userId.toString() === userId.toString()
         );
 
         if (permissionIndex !== -1) {
-            group.permissions[permissionIndex] = {
-                userId,
-                canAddTasks,
-                canEditTasks,
-                canDeleteTasks,
-            };
+            group.permissions[permissionIndex].role = targetRole;
         } else {
             group.permissions.push({
                 userId,
-                canAddTasks,
-                canEditTasks,
-                canDeleteTasks,
+                role: targetRole,
             });
         }
 

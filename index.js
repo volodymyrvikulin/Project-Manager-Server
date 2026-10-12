@@ -1,8 +1,10 @@
+import http from 'http';
 import express from 'express';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import multer from 'multer';
+import { initSocket } from './socket.js';
 import checkAuth from './utils/chekAuth/checkAuth.js';
 import handleValidationErrors from './utils/handleValidationErrors.js';
 import { loginValidation, registerValidation } from './validations/auth.js';
@@ -69,8 +71,13 @@ app.post('/tasks/:groupId', checkAuth, taskValidation, handleValidationErrors, T
 app.delete('/tasks/:groupId/:taskId', checkAuth, TaskController.remove);
 app.patch('/tasks/:groupId/:taskId', checkAuth, taskValidation, handleValidationErrors, TaskController.update);
 app.post('/ai/groups/:groupId/tasks', checkAuth, AiController.generateGroupTasks);
+app.post('/ai/groups/:groupId/risks', checkAuth, AiController.analyzeGroupRisks);
+app.post('/ai/groups/:groupId/tasks/:taskId/decompose', checkAuth, AiController.decomposeGroupTask);
 
-app.listen(port, (err) => {
+const server = http.createServer(app);
+initSocket(server);
+
+server.listen(port, (err) => {
     if (err) {
         return console.log(err);
     }

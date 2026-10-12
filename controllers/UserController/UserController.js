@@ -4,6 +4,7 @@ import bcrypt from 'bcrypt';
 import { generateToken } from '../../utils/generateToken/generateToken.js';
 import fs from 'fs/promises';
 import path from 'path';
+import { emitToUser } from '../../socket.js';
 
 export const register = async (req, res) => {
     try {
@@ -220,6 +221,23 @@ export const manageInvitation = async (req, res) => {
         const updatedGroup = await GroupModel.findById(groupId)
             .populate('members', 'fullName email')
             .populate('user', 'fullName email');
+
+        try {
+            if (action === 'accept' && group.user) {
+                emitToUser(group.user.toString(), 'invitation_accepted', {
+                    groupId: group._id,
+                    groupTitle: group.title,
+                    user: {
+                        _id: user._id,
+                        fullName: user.fullName,
+                        email: user.email,
+                    },
+                    message: `Користувач ${user.fullName} прийняв(ла) запрошення до проєкту "${group.title}"`,
+                });
+            }
+        } catch (socketErr) {
+            console.error('Socket notification error:', socketErr);
+        }
 
         res.json({
             message: `Invitation ${action === 'accept' ? 'accepted' : 'declined'}`,
